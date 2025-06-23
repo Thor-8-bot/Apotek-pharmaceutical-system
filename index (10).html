@@ -1,0 +1,962 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apotek Pharmaceutical System</title>
+  <style>
+    body { background: linear-gradient(to bottom, #1B263B, #415A77); font-family: 'Roboto', sans-serif; color: #F8FAF5; margin: 0; }
+    .container { max-width: 1280px; margin: 0 auto; padding: 2rem; }
+    .header { font-size: 2.5rem; font-weight: 700; text-align: center; color: #F8FAF5; text-shadow: 0 2px 4px rgba(0,0,0,0.3); margin-bottom: 2rem; position: relative; }
+    .kenyan-flag { position: absolute; top: 0; right: 0; width: 40px; height: 24px; background: linear-gradient(to bottom, #000 33%, #F00 33%, #F00 66%, #0F0 66%); border: 1px solid #FFF; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    .tab { background: #2A9D8F; color: #F8FAF5; padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer; transition: all 0.3s; font-weight: 500; }
+    .tab:hover, .tab.active { background: #E9C46A; color: #1B263B; transform: scale(1.05); }
+    .card { background: #F8FAF5; color: #1B263B; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.2); margin-bottom: 1.5rem; }
+    .subheader { font-size: 1.5rem; font-weight: 600; color: #1B263B; margin-bottom: 1rem; }
+    .input, .select, .file-input { width: 100%; padding: 0.75rem; border: 1px solid #778DA9; border-radius: 8px; background: #FFFFFF; color: #1B263B; }
+    .input:focus, .select:focus, .file-input:focus { outline: none; border-color: #E9C46A; }
+    .button { background: #2A9D8F; color: #F8FAF5; padding: 0.75rem 1.5rem; border: none; border-radius: 8px; cursor: pointer; }
+    .button:hover { background: #E9C46A; color: #1B263B; transform: scale(1.05); }
+    .alert { background: #FFE6E6; color: #D00000; padding: 0.75rem; border-radius: 8px; margin-top: 1rem; }
+    .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #F8FAF5; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 1000; }
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; }
+    .table { width: 100%; border-collapse: collapse; margin-top: 1rem; background: #FFFFFF; }
+    .table th, .table td { border: 1px solid #778DA9; padding: 0.75rem; text-align: left; }
+    .table th { background: #1B263B; color: #F8FAF5; }
+    .high-risk { color: #D00000; font-weight: 600; }
+    .medium-risk { color: #E9C46A; font-weight: 600; }
+    .low-risk { color: #2A9D8F; font-weight: 600; }
+    .canvas { width: 100%; max-width: 600px; margin: 1rem auto; background: #FFFFFF; padding: 1rem; border-radius: 8px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+    .kpi-card { background: #FFFFFF; padding: 1rem; border-radius: 8px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .action-grid { display: flex; gap: 1rem; margin-top: 1rem; }
+    .text-gray { color: #415A77; }
+    .filter-grid, .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+    .profile { display: flex; align-items: center; gap: 1rem; background: #FFFFFF; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; }
+    .profile img { width: 40px; height: 40px; border-radius: 50%; }
+    .error { color: #D00000; font-size: 0.9rem; }
+    .loading { text-align: center; padding: 2rem; font-size: 1.2rem; }
+    @media (max-width: 768px) { .tabs { flex-direction: column; } .canvas { max-width: 100%; } .filter-grid, .form-grid { grid-template-columns: 1fr; } }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.5/dist/chart.umd.min.js" onerror="console.error('Chart.js failed to load'); document.getElementById('fallback').innerHTML += '<p>Chart.js CDN failed. Charts will use fallback tables.</p>'"></script>
+</head>
+<body>
+  <div id="loading" class="loading">Loading Apotek System...</div>
+  <div id="root" style="display:none;">
+    <div class="container">
+      <h1 class="header">Apotek Pharmaceutical System<div class="kenyan-flag"></div></h1>
+      <div class="tabs" id="tabs">
+        <div class="tab active" data-tab="dashboard">Dashboard</div>
+        <div class="tab" data-tab="stock">Stock</div>
+        <div class="tab" data-tab="pos">POS</div>
+        <div class="tab" data-tab="catalog">Catalog</div>
+        <div class="tab" data-tab="analytics">Analytics</div>
+        <div class="tab" data-tab="ai">AI</div>
+        <div class="tab" data-tab="alwynn">Alwynn</div>
+      </div>
+      <div id="content"></div>
+    </div>
+  </div>
+  <div id="fallback" style="display:none;text-align:center;color:#F8FAF5;">
+    <h1>Apotek Pharmaceutical System</h1>
+    <p>Error loading application. Please check console (F12) and ensure you're using a local server (e.g., http://localhost:8080).</p>
+    <p>Common issues: No internet (Chart.js/Google Fonts CDN failed), file:// access, or browser cache. Try Ctrl+Shift+R or Firefox.</p>
+  </div>
+
+  <script>
+    console.log('Script started at', new Date().toISOString());
+    document.getElementById('loading').textContent = 'Initializing data...';
+
+    // Mock Data (KSh, DD/MM/YYYY)
+    const mockData = {
+      kpis: { sales: 1950000, orders: 120, lowStock: 5, profit: 585000 },
+      stock: [
+        { batch_id: 123, product: 'Paracetamol', category: 'Analgesic', expiry: '15/07/2025', closing_stock: 100, stock_movement: [{ type: 'Sale', quantity: -50, date: '17/06/2025' }, { type: 'Restock', quantity: 150, date: '01/06/2025' }], expired_stock: 0, purchase_price: 13, selling_price: 26, margin: 50, dead_stock: 0, max_stock: 500, min_stock: 50, risk: 'High' },
+        { batch_id: 456, product: 'Ibuprofen', category: 'Analgesic', expiry: '01/08/2025', closing_stock: 200, stock_movement: [{ type: 'Sale', quantity: -30, date: '17/06/2025' }], expired_stock: 0, purchase_price: 19.5, selling_price: 39, margin: 50, dead_stock: 0, max_stock: 400, min_stock: 80, risk: 'Medium' },
+        { batch_id: 789, product: 'Metformin', category: 'Antidiabetic', expiry: '01/12/2024', closing_stock: 300, stock_movement: [], expired_stock: 50, purchase_price: 26, selling_price: 65, margin: 60, dead_stock: 20, max_stock: 600, min_stock: 100, risk: 'Low' },
+      ],
+      products: [
+        { id: 1, name: 'Paracetamol', generic: 'Acetaminophen', form: 'Tablet', cost: 13, price: 26, margin: 50 },
+        { id: 2, name: 'Ibuprofen', generic: 'Ibuprofen', form: 'Capsule', cost: 19.5, price: 39, margin: 50 },
+        { id: 3, name: 'Metformin', generic: 'Metformin', form: 'Tablet', cost: 26, price: 65, margin: 60 },
+      ],
+      sales: [
+        { invoice: 'INV-20250617-001', product: 'Paracetamol', quantity: 50, discount: 50, total: 1250, purchase_price: 13, selling_price: 26, payment: 'Cash', batch_id: 123, category: 'Analgesic' },
+        { invoice: 'INV-20250617-002', product: 'Ibuprofen', quantity: 30, discount: 0, total: 1170, purchase_price: 19.5, selling_price: 39, payment: 'Card', batch_id: 456, category: 'Analgesic' },
+      ],
+      forecasts: [
+        { product: 'Paracetamol', date: '01/07/2025', quantity: 1000 },
+        { product: 'Ibuprofen', date: '01/07/2025', quantity: 600 },
+      ],
+      profitLoss: [
+        { month: '01/2025', profit: 156000, loss: 26000 },
+        { month: '02/2025', profit: 195000, loss: 19500 },
+        { month: '03/2025', profit: 130000, loss: 39000 },
+        { month: '04/2025', profit: 234000, loss: 13000 },
+        { month: '05/2025', profit: 260000, loss: 6500 },
+        { month: '06/2025', profit: 286000, loss: 10400 },
+      ],
+    };
+
+    console.log('Mock data loaded');
+
+    // Chart Instances
+    let charts = {};
+
+    // Helper to destroy charts
+    function destroyCharts() {
+      console.log('Destroying charts');
+      Object.values(charts).forEach(chart => {
+        if (chart && typeof chart.destroy === 'function') {
+          chart.destroy();
+        }
+      });
+      charts = {};
+    }
+
+    // Helper to render content
+    function renderContent(tab) {
+      console.log('Rendering tab:', tab);
+      destroyCharts();
+      const content = document.getElementById('content');
+      content.innerHTML = '';
+      try {
+        switch (tab) {
+          case 'dashboard': renderDashboard(); break;
+          case 'stock': renderStockManagement(); break;
+          case 'pos': renderPOS(); break;
+          case 'catalog': renderCatalog(); break;
+          case 'analytics': renderAnalytics(); break;
+          case 'ai': renderAI(); break;
+          case 'alwynn': renderAlwynn(); break;
+          default: renderDashboard();
+        }
+        console.log('Tab rendered successfully:', tab);
+      } catch (error) {
+        console.error('Error rendering tab:', tab, error);
+        content.innerHTML = '<p class="error">Failed to load tab. Please check console (F12).</p>';
+      }
+    }
+
+    // User Profile
+    function renderUserProfile() {
+      console.log('Rendering user profile');
+      return `
+        <div class="profile">
+          <img src="https://via.placeholder.com/40" alt="User Avatar">
+          <div>
+            <h3 class="text-lg font-semibold">Dr. Langat</h3>
+            <p class="text-gray">Role: Owner</p>
+          </div>
+        </div>
+      `;
+    }
+
+    // Sales Report Table
+    function renderSalesReport() {
+      console.log('Rendering sales report');
+      return `
+        <h3 class="subheader">Sales Report</h3>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Quantity</th>
+              <th>Discount (KSh)</th>
+              <th>Purchase Price (KSh)</th>
+              <th>Selling Price (KSh)</th>
+              <th>Total (KSh)</th>
+              <th>Invoice Number</th>
+              <th>Batch Number</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${mockData.sales.map(item => `
+              <tr>
+                <td>${item.product}</td>
+                <td>${item.quantity}</td>
+                <td>${item.discount.toFixed(2)}</td>
+                <td>${item.purchase_price.toFixed(2)}</td>
+                <td>${item.selling_price.toFixed(2)}</td>
+                <td>${item.total.toFixed(2)}</td>
+                <td>${item.invoice}</td>
+                <td>${item.batch_id}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    // Dashboard
+    function renderDashboard() {
+      console.log('Rendering dashboard');
+      const content = document.getElementById('content');
+      content.innerHTML = `
+        <div class="card">
+          ${renderUserProfile()}
+          <h2 class="subheader">Dashboard</h2>
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <h3 class="text-gray">Total Sales</h3>
+              <p class="text-2xl font-bold">KSh ${mockData.kpis.sales.toLocaleString()}</p>
+            </div>
+            <div class="kpi-card">
+              <h3 class="text-gray">Orders</h3>
+              <p class="text-2xl font-bold">${mockData.kpis.orders}</p>
+            </div>
+            <div class="kpi-card">
+              <h3 class="text-gray">Low Stock Alerts</h3>
+              <p class="text-2xl font-bold">${mockData.kpis.lowStock}</p>
+            </div>
+            <div class="kpi-card">
+              <h3 class="text-gray">Profit</h3>
+              <p class="text-2xl font-bold">KSh ${mockData.kpis.profit.toLocaleString()}</p>
+            </div>
+          </div>
+          <div class="alert">Alert: 5 batches expiring by 15/07/2025!</div>
+          <div class="action-grid">
+            <button class="button" onclick="alert('Mock action: New Sale')">New Sale</button>
+            <button class="button" onclick="alert('Mock action: Restock')">Restock</button>
+            <button class="button" onclick="alert('Mock action: Ask Alwynn')">Ask Alwynn</button>
+          </div>
+          ${renderSalesReport()}
+        </div>
+      `;
+    }
+
+    // Stock Management
+    function renderStockManagement() {
+      console.log('Rendering stock management');
+      const content = document.getElementById('content');
+      const alerts = [
+        ...mockData.stock.filter(item => item.closing_stock <= item.min_stock).map(item => ({ type: 'Low Stock', message: `${item.product} (Batch #${item.batch_id}) below minimum stock (${item.closing_stock}/${item.min_stock}).` })),
+        ...mockData.stock.filter(item => item.expired_stock > 0).map(item => ({ type: 'Expired Stock', message: `${item.product} (Batch #${item.batch_id}) has ${item.expired_stock} expired units.` })),
+        ...mockData.stock.filter(item => item.dead_stock > 0).map(item => ({ type: 'Dead Stock', message: `${item.product} (Batch #${item.batch_id}) has ${item.dead_stock} dead stock units.` })),
+      ];
+      content.innerHTML = `
+        <div class="card">
+          <h2 class="subheader">Stock Management</h2>
+          <div class="filter-grid">
+            <select id="filterRisk" class="select">
+              <option value="">All Risks</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+            <select id="filterCategory" class="select">
+              <option value="">All Categories</option>
+              <option value="Analgesic">Analgesic</option>
+              <option value="Antidiabetic">Antidiabetic</option>
+            </select>
+            <div>
+              <input type="file" accept=".xlsx,.xls" id="fileInput" class="file-input">
+              <button class="button mt-2" onclick="handleImport()">Import Excel</button>
+            </div>
+            <button class="button" onclick="showAlerts()">View Alerts</button>
+          </div>
+          <div id="alertsModal" style="display:none;">
+            <div class="modal-overlay" onclick="hideAlerts()"></div>
+            <div class="modal">
+              <h3 class="subheader">Stock Alerts</h3>
+              ${alerts.length > 0 ? `
+                <ul>
+                  ${alerts.map((alert, index) => `
+                    <li class="text-gray mb-2"><strong>${alert.type}:</strong> ${alert.message}</li>
+                  `).join('')}
+                </ul>
+              ` : '<p class="text-gray">No active alerts.</p>'}
+              <button class="button mt-4" onclick="hideAlerts()">Close</button>
+            </div>
+          </div>
+          <h3 class="subheader">Stock Levels</h3>
+          <div id="stockLevelChartContainer" class="canvas">
+            <canvas id="stockLevelChart"></canvas>
+            <p id="stockLevelError" class="error" style="display:none;">Chart failed to load. Showing table instead.</p>
+            <table id="stockLevelTable" class="table" style="display:none;">
+              <thead><tr><th>Product</th><th>Closing Stock</th><th>Max Stock</th><th>Min Stock</th></tr></thead>
+              <tbody>
+                ${mockData.stock.map(item => `
+                  <tr>
+                    <td>${item.product}</td>
+                    <td>${item.closing_stock}</td>
+                    <td>${item.max_stock}</td>
+                    <td>${item.min_stock}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          <h3 class="subheader">Dead Stock</h3>
+          <div id="deadStockChartContainer" class="canvas">
+            <canvas id="deadStockChart"></canvas>
+            <p id="deadStockError" class="error" style="display:none;">Chart failed to load. Showing table instead.</p>
+            <table id="deadStockTable" class="table" style="display:none;">
+              <thead><tr><th>Product</th><th>Dead Stock (Units)</th></tr></thead>
+              <tbody>
+                ${mockData.stock.map(item => `
+                  <tr>
+                    <td>${item.product}</td>
+                    <td style="color:${item.dead_stock > 0 ? '#D00000' : '#1B263B'}">${item.dead_stock}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Batch ID</th>
+                <th>Product</th>
+                <th>Category</th>
+                <th>Closing Stock</th>
+                <th>Max Stock</th>
+                <th>Min Stock</th>
+                <th>Stock Movement</th>
+                <th>Expired Stock</th>
+                <th>Purchase Price</th>
+                <th>Selling Price</th>
+                <th>Margin (%)</th>
+                <th>Dead Stock</th>
+                <th>Reorder</th>
+                <th>Expiry</th>
+                <th>Risk</th>
+              </tr>
+            </thead>
+            <tbody id="stockTable"></tbody>
+          </table>
+          ${renderSalesReport()}
+          <button class="button mt-4" onclick="alert('Mock export: Stock data downloaded')">Export to Excel/PDF</button>
+        </div>
+      `;
+      updateStockTable();
+      initStockCharts();
+      document.getElementById('filterRisk').addEventListener('change', updateStockTable);
+      document.getElementById('filterCategory').addEventListener('change', updateStockTable);
+    }
+
+    function initStockCharts() {
+      console.log('Initializing stock charts');
+      if (!window.Chart) {
+        console.warn('Chart.js not loaded');
+        document.getElementById('stockLevelError').style.display = 'block';
+        document.getElementById('stockLevelTable').style.display = 'table';
+        document.getElementById('deadStockError').style.display = 'block';
+        document.getElementById('deadStockTable').style.display = 'table';
+        return;
+      }
+      const stockLevelCtx = document.getElementById('stockLevelChart')?.getContext('2d');
+      const deadStockCtx = document.getElementById('deadStockChart')?.getContext('2d');
+      if (stockLevelCtx) {
+        charts.stockLevel = new window.Chart(stockLevelCtx, {
+          type: 'bar',
+          data: {
+            labels: mockData.stock.map(item => item.product),
+            datasets: [
+              { label: 'Closing Stock', data: mockData.stock.map(item => item.closing_stock), backgroundColor: '#E9C46A' },
+              { label: 'Max Stock', data: mockData.stock.map(item => item.max_stock), backgroundColor: 'rgba(42, 157, 143, 0.3)' },
+              { label: 'Min Stock', data: mockData.stock.map(item => item.min_stock), backgroundColor: 'rgba(208, 0, 0, 0.3)' },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' }, title: { display: true, text: 'Stock Levels' } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Units' } }, x: { title: { display: true, text: 'Product' } } },
+          },
+        });
+        console.log('Stock Level chart initialized');
+      } else {
+        console.warn('Stock Level Chart canvas not found');
+        document.getElementById('stockLevelError').style.display = 'block';
+        document.getElementById('stockLevelTable').style.display = 'table';
+      }
+      if (deadStockCtx) {
+        charts.deadStock = new window.Chart(deadStockCtx, {
+          type: 'bar',
+          data: {
+            labels: mockData.stock.map(item => item.product),
+            datasets: [{ label: 'Dead Stock', data: mockData.stock.map(item => item.dead_stock), backgroundColor: '#D00000' }],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false }, title: { display: true, text: 'Dead Stock (Units)' } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Units' } }, x: { title: { display: true, text: 'Product' } } },
+          },
+        });
+        console.log('Dead Stock chart initialized');
+      } else {
+        console.warn('Dead Stock Chart canvas not found');
+        document.getElementById('deadStockError').style.display = 'block';
+        document.getElementById('deadStockTable').style.display = 'table';
+      }
+    }
+
+    function updateStockTable() {
+      console.log('Updating stock table');
+      const filterRisk = document.getElementById('filterRisk').value;
+      const filterCategory = document.getElementById('filterCategory').value;
+      const filteredStock = mockData.stock.filter(
+        item => (!filterRisk || item.risk === filterRisk) && (!filterCategory || item.category === filterCategory)
+      );
+      const tbody = document.getElementById('stockTable');
+      tbody.innerHTML = filteredStock.map(item => `
+        <tr>
+          <td>${item.batch_id}</td>
+          <td>${item.product}</td>
+          <td>${item.category}</td>
+          <td>${item.closing_stock}</td>
+          <td>${item.max_stock}</td>
+          <td>${item.min_stock}</td>
+          <td>${item.stock_movement.map(m => `${m.type}: ${m.quantity} (${m.date})`).join(', ')}</td>
+          <td>${item.expired_stock}</td>
+          <td>KSh ${item.purchase_price.toFixed(2)}</td>
+          <td>KSh ${item.selling_price.toFixed(2)}</td>
+          <td>${item.margin}</td>
+          <td>${item.dead_stock}</td>
+          <td>${item.closing_stock <= item.min_stock ? item.max_stock - item.closing_stock : 0}</td>
+          <td>${item.expiry}</td>
+          <td class="${item.risk.toLowerCase()}-risk">${item.risk}</td>
+        </tr>
+      `).join('');
+    }
+
+    function handleImport() {
+      console.log('Handling Excel import');
+      const fileInput = document.getElementById('fileInput');
+      if (fileInput.files[0]) {
+        alert(`Mock import: Excel file "${fileInput.files[0].name}" uploaded`);
+      } else {
+        alert('Please select an Excel file');
+      }
+    }
+
+    function showAlerts() {
+      console.log('Showing alerts modal');
+      document.getElementById('alertsModal').style.display = 'block';
+    }
+
+    function hideAlerts() {
+      console.log('Hiding alerts modal');
+      document.getElementById('alertsModal').style.display = 'none';
+    }
+
+    // POS
+    function renderPOS() {
+      console.log('Rendering POS');
+      const content = document.getElementById('content');
+      content.innerHTML = `
+        <div class="card">
+          <h2 class="subheader">Point of Sale</h2>
+          <div class="form-grid">
+            <select id="productId" class="select" onchange="updateBatchOptions()">
+              <option value="">Select Product</option>
+              ${mockData.products.map(item => `
+                <option value="${item.id}">${item.name} (${item.form})</option>
+              `).join('')}
+            </select>
+            <select id="batchId" class="select">
+              <option value="">Select Batch</option>
+            </select>
+            <input type="number" id="quantity" class="input" placeholder="Quantity" min="1">
+            <input type="number" id="discount" class="input" placeholder="Discount (KSh)" min="0" step="0.01">
+            <select id="payment" class="select">
+              <option value="Cash">Cash</option>
+              <option value="Card">Card</option>
+            </select>
+            <button class="button" onclick="addSale()">Record Sale</button>
+          </div>
+          <p id="error" class="error" style="display:none;"></p>
+          <p id="invoice" class="text-gray mt-4" style="display:none;"></p>
+        </div>
+      `;
+      updateBatchOptions();
+    }
+
+    function updateBatchOptions() {
+      console.log('Updating batch options');
+      const productId = document.getElementById('productId').value;
+      const batchSelect = document.getElementById('batchId');
+      batchSelect.innerHTML = '<option value="">Select Batch</option>';
+      if (productId) {
+        const product = mockData.products.find(p => p.id === parseInt(productId));
+        const batches = mockData.stock.filter(s => s.product === product.name);
+        batchSelect.innerHTML += batches.map(item => `
+          <option value="${item.batch_id}">${item.product} (Batch #${item.batch_id}, Expiry: ${item.expiry})</option>
+        `).join('');
+      }
+    }
+
+    function addSale() {
+      console.log('Adding sale');
+      const productId = document.getElementById('productId').value;
+      const batchId = document.getElementById('batchId').value;
+      const quantity = parseInt(document.getElementById('quantity').value);
+      const discount = parseFloat(document.getElementById('discount').value || '0');
+      const payment = document.getElementById('payment').value;
+      const error = document.getElementById('error');
+      const invoice = document.getElementById('invoice');
+
+      if (!productId || !batchId || !quantity || isNaN(discount)) {
+        error.style.display = 'block';
+        error.textContent = 'All fields are required.';
+        console.log('Sale validation failed: Missing fields');
+        return;
+      }
+      if (quantity <= 0) {
+        error.style.display = 'block';
+        error.textContent = 'Quantity must be a positive number.';
+        console.log('Sale validation failed: Invalid quantity');
+        return;
+      }
+      if (discount < 0) {
+        error.style.display = 'block';
+        error.textContent = 'Discount must be non-negative.';
+        console.log('Sale validation failed: Negative discount');
+        return;
+      }
+      const product = mockData.products.find(p => p.id === parseInt(productId));
+      const stockItem = mockData.stock.find(s => s.batch_id === parseInt(batchId) && s.product === product.name);
+      if (!product || !stockItem) {
+        error.style.display = 'block';
+        error.textContent = 'Invalid product or batch.';
+        console.log('Sale validation failed: Invalid product/batch');
+        return;
+      }
+      if (stockItem.closing_stock < quantity) {
+        error.style.display = 'block';
+        error.textContent = `Insufficient stock for ${product.name} (Available: ${stockItem.closing_stock}).`;
+        console.log('Sale validation failed: Insufficient stock');
+        return;
+      }
+      const total = (product.price * quantity - discount).toFixed(2);
+      const newInvoice = `INV-20250619-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+      mockData.sales.push({
+        invoice: newInvoice,
+        product: product.name,
+        quantity,
+        discount,
+        total: parseFloat(total),
+        purchase_price: product.cost,
+        selling_price: product.price,
+        payment,
+        batch_id: parseInt(batchId),
+        category: stockItem.category
+      });
+      stockItem.closing_stock -= quantity;
+      stockItem.stock_movement.push({ type: 'Sale', quantity: -quantity, date: '19/06/2025' });
+      mockData.kpis.sales += parseFloat(total);
+      mockData.kpis.orders += 1;
+      error.style.display = 'none';
+      invoice.style.display = 'block';
+      invoice.textContent = `Invoice: ${newInvoice}`;
+      console.log('Sale recorded:', { invoice: newInvoice, product: product.name, total });
+      alert(`Sale recorded: ${product.name}, Invoice: ${newInvoice}`);
+      renderContent(document.querySelector('.tab.active').dataset.tab);
+    }
+
+    // Catalog
+    function renderCatalog() {
+      console.log('Rendering catalog');
+      const content = document.getElementById('content');
+      content.innerHTML = `
+        <div class="card">
+          <h2 class="subheader">Product Catalog</h2>
+          <div class="form-grid">
+            <input type="text" id="name" class="input" placeholder="Medicine Name">
+            <input type="text" id="generic" class="input" placeholder="Generic Name">
+            <select id="form" class="select">
+              <option value="">Select Form</option>
+              <option value="Tablet">Tablet</option>
+              <option value="Capsule">Capsule</option>
+              <option value="Syrup">Syrup</option>
+            </select>
+            <input type="number" id="cost" class="input" placeholder="Cost (KSh)" step="0.01">
+            <input type="number" id="price" class="input" placeholder="Price (KSh)" step="0.01">
+            <button class="button" onclick="addMedicine()">Add Medicine</button>
+          </div>
+          <p id="error" class="error" style="display:none;"></p>
+          <h3 class="subheader">Product Performance</h3>
+          <table class="table">
+            <thead>
+              <tr><th>Product</th><th>Margin (%)</th></tr>
+            </thead>
+            <tbody>
+              ${mockData.products.map(item => `
+                <tr>
+                  <td>${item.name}</td>
+                  <td>${item.margin}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Generic</th>
+                <th>Form</th>
+                <th>Cost (KSh)</th>
+                <th>Price (KSh)</th>
+                <th>Margin (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${mockData.products.map(item => `
+                <tr>
+                  <td>${item.name}</td>
+                  <td>${item.generic}</td>
+                  <td>${item.form}</td>
+                  <td>${item.cost.toFixed(2)}</td>
+                  <td>${item.price.toFixed(2)}</td>
+                  <td>${item.margin}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function addMedicine() {
+      console.log('Adding medicine');
+      const name = document.getElementById('name').value;
+      const generic = document.getElementById('generic').value;
+      const form = document.getElementById('form').value;
+      const cost = parseFloat(document.getElementById('cost').value);
+      const price = parseFloat(document.getElementById('price').value);
+      const error = document.getElementById('error');
+      if (!name || !generic || !form || !cost || !price) {
+        error.style.display = 'block';
+        error.textContent = 'All fields are required.';
+        console.log('Medicine validation failed: Missing fields');
+        return;
+      }
+      if (isNaN(cost) || isNaN(price) || cost < 0 || price < 0) {
+        error.style.display = 'block';
+        error.textContent = 'Cost and Price must be valid positive numbers.';
+        console.log('Medicine validation failed: Invalid cost/price');
+        return;
+      }
+      const margin = ((price - cost) / price * 100).toFixed(2);
+      mockData.products.push({
+        id: mockData.products.length + 1,
+        name,
+        generic,
+        form,
+        cost,
+        price,
+        margin: parseFloat(margin)
+      });
+      error.style.display = 'none';
+      console.log('Medicine added:', { name, margin });
+      alert(`Added ${name} to catalog.`);
+      renderCatalog();
+    }
+
+    // Analytics
+    function renderAnalytics() {
+      console.log('Rendering analytics');
+      const categories = mockData.sales.reduce((acc, item) => {
+        acc[item.category] = (acc[item.category] || 0) + item.quantity;
+        return acc;
+      }, {});
+      const risks = mockData.stock.reduce((acc, item) => {
+        acc[item.risk] = (acc[item.risk] || 0) + 1;
+        return acc;
+      }, {});
+      const content = document.getElementById('content');
+      content.innerHTML = `
+        <div class="card">
+          <h2 class="subheader">Analytics Hub</h2>
+          <h3 class="subheader">Sales Trends</h3>
+          <div id="salesChartContainer" class="canvas">
+            <canvas id="salesChart"></canvas>
+            <p id="salesError" class="error" style="display:none;">Chart failed to load.</p>
+          </div>
+          <h3 class="subheader">Profit & Loss (KSh)</h3>
+          <div id="profitLossChartContainer" class="canvas">
+            <canvas id="profitLossChart"></canvas>
+            <p id="profitLossError" class="error" style="display:none;">Chart failed to load. Showing table instead.</p>
+            <table id="profitLossTable" class="table" style="display:none;">
+              <thead><tr><th>Month</th><th>Profit</th><th>Loss</th></tr></thead>
+              <tbody>
+                ${mockData.profitLoss.map(item => `
+                  <tr>
+                    <td>${item.month}</td>
+                    <td>KSh ${item.profit.toLocaleString()}</td>
+                    <td>KSh ${item.loss.toLocaleString()}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          <h3 class="subheader">Expiry Risk Distribution</h3>
+          <div id="expiryRiskChartContainer" class="canvas">
+            <canvas id="expiryRiskChart"></canvas>
+            <p id="expiryRiskError" class="error" style="display:none;">Chart failed to load. Showing table instead.</p>
+            <table id="expiryRiskTable" class="table" style="display:none;">
+              <thead><tr><th>Risk</th><th>Count</th></tr></thead>
+              <tbody>
+                <tr><td>High</td><td>${risks.High || 0}</td></tr>
+                <tr><td>Medium</td><td>${risks.Medium || 0}</td></tr>
+                <tr><td>Low</td><td>${risks.Low || 0}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3 class="subheader">Sales by Category (Units)</h3>
+          <div id="therapeuticChartContainer" class="canvas">
+            <canvas id="therapeuticChart"></canvas>
+            <p id="therapeuticError" class="error" style="display:none;">Chart failed to load. Showing table instead.</p>
+            <table id="therapeuticTable" class="table" style="display:none;">
+              <thead><tr><th>Category</th><th>Units Sold</th></tr></thead>
+              <tbody>
+                ${Object.keys(categories).map(category => `
+                  <tr>
+                    <td>${category}</td>
+                    <td>${categories[category]}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      initAnalyticsCharts();
+    }
+
+    function initAnalyticsCharts() {
+      console.log('Initializing analytics charts');
+      if (!window.Chart) {
+        console.warn('Chart.js not loaded');
+        document.getElementById('salesError').style.display = 'block';
+        document.getElementById('profitLossError').style.display = 'block';
+        document.getElementById('profitLossTable').style.display = 'table';
+        document.getElementById('expiryRiskError').style.display = 'block';
+        document.getElementById('expiryRiskTable').style.display = 'table';
+        document.getElementById('therapeuticError').style.display = 'block';
+        document.getElementById('therapeuticTable').style.display = 'table';
+        return;
+      }
+      const salesCtx = document.getElementById('salesChart')?.getContext('2d');
+      const profitLossCtx = document.getElementById('profitLossChart')?.getContext('2d');
+      const expiryRiskCtx = document.getElementById('expiryRiskChart')?.getContext('2d');
+      const therapeuticCtx = document.getElementById('therapeuticChart')?.getContext('2d');
+      if (salesCtx) {
+        charts.sales = new window.Chart(salesCtx, {
+          type: 'line',
+          data: {
+            labels: ['01/2025', '02/2025', '03/2025', '04/2025', '05/2025', '06/2025'],
+            datasets: [
+              { label: 'Paracetamol Sales', data: [500, 600, 450, 700, 800, 900], borderColor: '#2A9D8F', backgroundColor: 'rgba(42, 157, 143, 0.2)', fill: true },
+              { label: 'Ibuprofen Sales', data: [300, 350, 400, 500, 450, 600], borderColor: '#E9C46A', backgroundColor: 'rgba(233, 196, 106, 0.2)', fill: true },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' }, title: { display: true, text: 'Sales Trends (2025)' } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Units Sold' } }, x: { title: { display: true, text: 'Month' } } },
+          },
+        });
+        console.log('Sales chart initialized');
+      } else {
+        console.warn('Sales Chart canvas not found');
+        document.getElementById('salesError').style.display = 'block';
+      }
+      if (profitLossCtx) {
+        charts.profitLoss = new window.Chart(profitLossCtx, {
+          type: 'bar',
+          data: {
+            labels: mockData.profitLoss.map(item => item.month),
+            datasets: [
+              { label: 'Profit', data: mockData.profitLoss.map(item => item.profit), backgroundColor: '#2A9D8F' },
+              { label: 'Loss', data: mockData.profitLoss.map(item => item.loss), backgroundColor: '#D00000' },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' }, title: { display: true, text: 'Profit & Loss (2025, KSh)' } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Amount (KSh)' } }, x: { title: { display: true, text: 'Month' } } },
+          },
+        });
+        console.log('Profit/Loss chart initialized');
+      } else {
+        console.warn('Profit/Loss Chart canvas not found');
+        document.getElementById('profitLossError').style.display = 'block';
+        document.getElementById('profitLossTable').style.display = 'table';
+      }
+      if (expiryRiskCtx) {
+        const risks = mockData.stock.reduce((acc, item) => {
+          acc[item.risk] = (acc[item.risk] || 0) + 1;
+          return acc;
+        }, {});
+        charts.expiryRisk = new window.Chart(expiryRiskCtx, {
+          type: 'pie',
+          data: {
+            labels: ['High', 'Medium', 'Low'],
+            datasets: [{ data: [risks.High || 0, risks.Medium || 0, risks.Low || 0], backgroundColor: ['#D00000', '#E9C46A', '#2A9D8F'] }],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' }, title: { display: true, text: 'Expiry Risk Distribution' } },
+          },
+        });
+        console.log('Expiry Risk chart initialized');
+      } else {
+        console.warn('Expiry Risk Chart canvas not found');
+        document.getElementById('expiryRiskError').style.display = 'block';
+        document.getElementById('expiryRiskTable').style.display = 'table';
+      }
+      if (therapeuticCtx) {
+        const categories = mockData.sales.reduce((acc, item) => {
+          acc[item.category] = (acc[item.category] || 0) + item.quantity;
+          return acc;
+        }, {});
+        charts.therapeutic = new window.Chart(therapeuticCtx, {
+          type: 'pie',
+          data: {
+            labels: Object.keys(categories),
+            datasets: [{ data: Object.values(categories), backgroundColor: ['#2A9D8F', '#E9C46A', '#1B263B'] }],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' }, title: { display: true, text: 'Sales by Category (Units)' } },
+          },
+        });
+        console.log('Therapeutic chart initialized');
+      } else {
+        console.warn('Therapeutic Chart canvas not found');
+        document.getElementById('therapeuticError').style.display = 'block';
+        document.getElementById('therapeuticTable').style.display = 'table';
+      }
+    }
+
+    // AI Predictive Engine
+    function renderAI() {
+      console.log('Rendering AI');
+      const content = document.getElementById('content');
+      content.innerHTML = `
+        <div class="card">
+          <h2 class="subheader">AI Predictive Engine</h2>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Forecast Date</th>
+                <th>Predicted Quantity</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${mockData.forecasts.map(item => `
+                <tr>
+                  <td>${item.product}</td>
+                  <td>${item.date}</td>
+                  <td>${item.quantity}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // Alwynn Chatbox
+    function renderAlwynn() {
+      console.log('Rendering Alwynn');
+      const content = document.getElementById('content');
+      content.innerHTML = `
+        <div class="card">
+          <h3 class="subheader">Alwynn Assistant</h3>
+          <input type="text" id="query" class="input" placeholder="Ask about sales, stock, forecasts, or analytics...">
+          <button class="button" onclick="handleQuery()">Ask Alwynn</button>
+          <div id="response" class="text-gray mt-4">No response yet.</div>
+        </div>
+      `;
+    }
+
+    function handleQuery() {
+      console.log('Handling Alwynn query');
+      const query = document.getElementById('query').value;
+      const response = query.toLowerCase().includes('financial')
+        ? 'Access denied: Financial queries restricted to owner.'
+        : `Alwynn: Mock response for "${query}" (e.g., Paracetamol closing stock low, restock 400 units, KSh 5200)`;
+      document.getElementById('response').textContent = response;
+      console.log('Alwynn response:', response);
+    }
+
+    // Tab Switching
+    function setupTabs() {
+      console.log('Setting up tabs');
+      const tabs = document.getElementById('tabs');
+      if (!tabs) {
+        console.error('Tabs element not found');
+        return;
+      }
+      tabs.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tab')) {
+          console.log('Tab clicked:', e.target.dataset.tab);
+          document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+          e.target.classList.add('active');
+          renderContent(e.target.dataset.tab);
+        }
+      });
+    }
+
+    // Initial Render
+    try {
+      console.log('Attempting initial render');
+      document.getElementById('loading').textContent = 'Rendering UI...';
+      setupTabs();
+      renderContent('dashboard');
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('root').style.display = 'block';
+      console.log('Initial render successful');
+    } catch (error) {
+      console.error('Error rendering app:', error);
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('root').style.display = 'none';
+      document.getElementById('fallback').style.display = 'block';
+    }
+  </script>
+</body>
+</html>
